@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+# generate a WHAT fly file.
+[ ! -e ./WHAT.fl ] && touch ./WHAT.fl
+
+# generate a AND perl file.
+[ ! -e ./AND.pl ] && touch ./AND.pl
+
+# generate a HOW project floder.
+[ ! -d ./HOW ] && mkdir -p ./HOW
+
+# generate envinorment variable.
+export WAH_ATOM='`'
+export WAH_LINK='->'
+export WAH_BEGIN='begin'
+export WAH_END='end'
+export WAH_CONFIG='config'
+export WAH_ACTION='action'
