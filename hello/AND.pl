@@ -3,7 +3,6 @@ use strict;
 use warnings;
 
 sub parse_what {
-
 }
 
 sub do_how {

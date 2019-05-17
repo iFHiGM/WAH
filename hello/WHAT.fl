@@ -1,7 +1,7 @@
 `begin->config->hello
     `begin->step->one
-        `action->execute`
-              `->hello_lilei.sh`
+        `action->execute
+               ->hello_lilei.sh`
     one->step->end`
     `begin->step->two
 	`action->execute
