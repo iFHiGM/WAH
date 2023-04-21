@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+
+proj=$1
+
+echo "你选择的WAH路径: [${proj}]"
+echo "当前工作路径：[$(pwd)]"
+
+and_file="${proj}/and.sh"
+echo "要查找的AND: [${and_file}]"
+
+if [ -e "${and_file}" ]; then
+    echo "执行AND开始..."
+    ${and_file}
+    echo "执行AND结束..."
+else
+    echo "噢！你确定你有这个WAH吗？"
+fi
