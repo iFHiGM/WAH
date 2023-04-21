@@ -1,2 +1,0 @@
-# WAH
-What And How
