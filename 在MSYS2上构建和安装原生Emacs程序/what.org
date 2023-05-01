@@ -1,0 +1,67 @@
+* 在MSYS2上构建和安装原生Emacs程序
+
+** 预备工作
+*** 系统环境检查
+Windows, MINGW64（隐含Windows系统条件）。
+*** MSYS2编译环境准备
+**** Emacs编译依赖安装
+- 安装依赖见installation.sh
+
+** Emacs源码下载
+*** 库主页
+http://savannah.gnu.org/projects/emacs/
+*** 下载命令
+#+begin_src shell
+git clone -b master git://git.sv.gnu.org/emacs.git
+#+end_src
+
+** Emacs编译
+#+begin_src shell
+cd emacs && ./autogen.sh
+mkdir build && PKG_CONFIG_PATH=/mingw64/lib/pkgconfig ../configure --with-native-compilation --with-gnutls --with-jpeg --with-png --with-rsvg --with-tiff --with-wide-int --with-xft --with-xml2 --with-xpm --without-dbus --without-imagemagick --without-pop --with-json --with-pgtk
+#+end_src
+
+*** 避免命令行警告
+> ac-wrapper: autoreconf: warning: auto-detected versions not found ( ); falling back to latest available
+
+[TBD]脚注：https://github.com/msys2/MSYS2-packages/issues/3588
+WANT_AUTOCONF=latest ./autogen.sh
+
+
+additional:
+--with-tree-sitter
+nproc // get cpu count
+make -jxx
+
+如果标准流程在make -j时执行失败，那么可以重新执行下列步骤：
+make bootstrap // if you meet compile error
+
+** Emacs安装
+*** 安装目录位置
+C:\Users\FLMW\Documents\Self
+
+make install  prefix="安装位置"
+
+
+** Emacs配置 （暂时手动配置）
+*** 下载配置仓库
+https://github.com/iFHiGM/emacs.d
+*** 配置额外配置文件=.custom.el=
+*** 将配置与Emacs对接
+
+** Emacs启动测试 （手动测试）
+
+
+** 额外配置修复 （手动检查）
+*** 下载libtool，某个包需要【TBD confirm】。
+*** 为了避免Native Emacs 出现PATH问题（比如原生启动可能导致package-list_packatges相关命令失败），从MSYS2启动Emacs，可以完美解决这个问题，前提是要安装MinGW64版本的gnupg。
+*** 【TBD】tree-sitter可能需要额外步骤才能启用。
+*** msys2配置加入
+
+* WAH 使用方法
+1. 打开终端（MINGW64），并切换到本解决方案文件夹内。
+cd prefix/在MSYS2上构建和安装原生Emacs程序
+2. 根据需要调整and.sh中的export变量参数。
+3. 执行~../wah .~
+
+*** 建议先将IS_DRY_RUN变量设置为"true"观察命令输出，如果不符合预期，先调整，调整好之后再恢复该选项，进行真实安装。
