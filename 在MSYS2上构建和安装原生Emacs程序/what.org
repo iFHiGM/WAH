@@ -1,72 +1,110 @@
+* 本WAH使用方法
+1. 打开终端（MINGW64），并切换到仓库的本解决方案文件夹内。
+#+begin_src shell
+cd 在MSYS2上构建和安装原生Emacs程序
+#+end_src
+
+2. 根据需要调整and.sh中的export变量参数。
+3. 执行命令： ~../wah .~ 。
+
+** 提示
+建议先将 =IS_DRY_RUN= 变量设置为 =true= 观察命令输出，如果不符合预期，先调整，调整好之后再恢复该选项，进行真实安装。
+
 * 在MSYS2上构建和安装原生Emacs程序
 
 ** 预备工作
 *** 系统环境检查
 Windows, MINGW64（隐含Windows系统条件）。
+
 *** MSYS2编译环境准备
-**** Emacs编译依赖安装
-- 安装依赖见installation.sh
+MSYS2先下载编译Emacs需要的各种依赖，见[[file:how/installation.sh][How解决方案中的安装依赖段代码]]。
 
 ** Emacs源码下载
-*** 库主页
-http://savannah.gnu.org/projects/emacs/
-*** 下载命令
+到Emacs源码网站查看最新克隆地址[fn:4]（本文的地址可能会因为更新不及时而失效）。
+*** 克隆源码
 #+begin_src shell
 git clone -b master git://git.sv.gnu.org/emacs.git
 #+end_src
 
 ** Emacs编译
+*** 配置
 #+begin_src shell
 cd emacs && ./autogen.sh
-mkdir build && PKG_CONFIG_PATH=/mingw64/lib/pkgconfig ../configure --with-native-compilation --with-gnutls --with-jpeg --with-png --with-rsvg --with-tiff --with-wide-int --with-xft --with-xml2 --with-xpm --without-dbus --without-imagemagick --without-pop --with-json --with-pgtk
+mkdir build && cd build
+PKG_CONFIG_PATH=/mingw64/lib/pkgconfig ../configure --with-native-compilation --with-gnutls --with-jpeg --with-png --with-rsvg --with-tiff --with-wide-int --with-xft --with-xml2 --with-xpm --without-dbus --without-imagemagick --without-pop --with-json --with-pgtk
 #+end_src
 
-*** 避免命令行警告
-> ac-wrapper: autoreconf: warning: auto-detected versions not found ( ); falling back to latest available
+**** 避免命令行警告
+在执行命令 ~./autogen.sh~ 的过程中，若出现以下警告，可安全忽略。
+#+begin_quote
+ac-wrapper: autoreconf: warning: auto-detected versions not found ( ); falling back to latest available
+#+end_quote
 
-[TBD]脚注：https://github.com/msys2/MSYS2-packages/issues/3588
+当然强迫症也可以通过下列命令规避（解决方案来自于此[fn:1]）：
+#+begin_src shell
 WANT_AUTOCONF=latest ./autogen.sh
+#+end_src
 
+**** 额外的选项
+可以在配置时选择额外的功能支持，这里我另外选择了 =tree-sitter= 支持，在 ~../configure~ 命令末端加上：
+~--with-tree-sitter~
 
-additional:
---with-tree-sitter
-nproc // get cpu count
-make -jxx
+*** 编译
+获取CPU线程数，进行多线程编译提高编译速度：
+#+begin_src shell
+num=nproc
+make -j$((${num} + 1))
+#+end_src
 
-如果标准流程在make -j时执行失败，那么可以重新执行下列步骤：
-make bootstrap // if you meet compile error
+**** 如果多线程编译出现问题
+1. 尝试使用 ~make -j1~ 进行单线程编译，测试是否出现同样的问题。
+2. 尝试使用 ~make bootstrap~ 命令。
 
 ** Emacs安装
 *** 安装目录位置
-C:\Users\FLMW\Documents\Self
-
-make install  prefix="安装位置"
-
+为Emacs选择一个安装路径并安装，有时候，安装过程会比较慢，终端的日志会停止滚动（实际上并没有卡住），等一会就好。
+#+begin_src shell
+make install prefix="选择的安装位置"
+#+end_src
 
 ** Emacs配置 （暂时手动配置）
 *** 下载配置仓库
-https://github.com/iFHiGM/emacs.d
+我个人的：https://github.com/iFHiGM/emacs.d
 
-将emacs.d使用mklink（使用cmd）链接到~的.emacs.d下。
-*** 配置额外配置文件=.custom.el=
+**** 配置提示
+一般Emacs会读取home目录下的 =init.el= 或者 =.emacs.d/init.el= 来加载自定义配置。
 
-*** 将配置与Emacs对接
+而我使用了后一种，这样就会有一个问题，需要将配置直接clone到home目录下吗？
 
-** Emacs启动测试 （手动测试）
+答：这是其中的一种选择，我使用另一种方式，仍然按照自己的代码仓库组织方式clone配置仓库，同时使用Windows的 ~mklink /J~ 命令创建一个从 =配置仓库实际位置= 到 =home目录下~.emacs.d~目录= 的目录联结[fn:5]（类似与linux下的软链接，但不完全相同），既方便管理源码，也方便有需要时更改配置（毕竟用Emacs的很多人不止尝试一种配置）。
 
-*** 在第一次启动时，emacs会下载很多你的配置中需要的依赖包（依赖包的多少视你的配置而定），如果使用国内源时下载某些包时报错，可以考虑挂代理用官方源先把出问题的包下载下来之后再切回国内源。
+**** 配置额外配置文件 =.custom.el=
+这个配置文件是与我用的配置配套的一个文件，我的配置fork自 =redguardtoo/emacs.d= [fn:2]，所以配置文件也就跟其一致。
 
+*** 额外问题/修复/配置
+- [X] 在 ~packages-list-packages~ 界面下载包时可能会下载失败，同时在日志中出现HOME路径重复的奇怪现象（一般是Windows和MSYS2的home目录重叠），貌似是PATH路径问题（且跟gunpg有关[fn:3]），我的解决方案是：
+  - 安装mingw64版本的gnupg： ~pacman -S mingw64/mingw-w64-x86_64-gnupg~ 。
+  - 从MSYS2执行 =runemacs.exe= 而不是原生Windows环境启动来规避麻烦的PATH问题。
+- [X] tree-sitter 需要额外的步骤才能启用。
+- [ ] 待验证，下载libtool，某个包需要。
+- [ ] 使用alias，简化Emacs在MSYS2中的使用，当然直接将路径加入PATH也可以。
 
-** 额外配置修复 （手动检查）
-*** 下载libtool，某个包需要【TBD confirm】。
-*** 为了避免Native Emacs 出现PATH问题（比如原生启动可能导致package-list_packatges相关命令失败），从MSYS2启动Emacs，可以完美解决这个问题，前提是要安装MinGW64版本的gnupg。
-*** 【TBD】tree-sitter可能需要额外步骤才能启用。
-*** msys2配置加入
+** 将配置与Emacs对接/启动测试
+运行安装目录下的 =bin/runemacs.exe= 开启Emacs。
 
-* WAH 使用方法
-1. 打开终端（MINGW64），并切换到本解决方案文件夹内。
-cd prefix/在MSYS2上构建和安装原生Emacs程序
-2. 根据需要调整and.sh中的export变量参数。
-3. 执行~../wah .~
+*** 配置包网络问题
+在第一次启动时，emacs会下载很多你的配置中需要的依赖包（依赖包的多少视你的配置而定），如果使用国内源时下载某些包时报错，可以考虑挂代理用官方源先把出问题的包下载下来之后再切回国内源。
 
-*** 建议先将IS_DRY_RUN变量设置为"true"观察命令输出，如果不符合预期，先调整，调整好之后再恢复该选项，进行真实安装。
+* 参考
+1. https://readingworldmagazine.com/emacs/2022-02-24-compiling-emacs-29-from-source-on-windows
+
+* Footnotes
+[fn:5] https://learn.microsoft.com/zh-cn/windows-server/administration/windows-commands/mklink
+
+[fn:4] http://savannah.gnu.org/projects/emacs
+
+[fn:3] https://emacs-china.org/t/list-package/14031/11
+
+[fn:2] https://github.com/redguardtoo/emacs.d 
+
+[fn:1] https://github.com/msys2/MSYS2-packages/issues/3588
