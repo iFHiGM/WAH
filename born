@@ -1,6 +1,24 @@
 #!/usr/bin/env bash
 
-project_name='default'
+project_name=${1:?please enter the project name}
+
+echo "将新建工程：$project_name"
+
+[ -e ${project_name} ] && echo "工程名存在！" && exit -1
+
+[ ! -d ${project_name} ] && mkdir -p ${project_name}
+
+
+# generate a WHAT fly file.
+touch ${project_name}/what.fl
+
+# generate a AND perl file.
+touch ${project_name}/and.sh
+
+# generate a HOW project floder.
+mkdir -p ${project_name}/how
+
+exit
 
 export WAH_ATOM='`'
 export WAH_LINK='->'
@@ -12,17 +30,3 @@ export WAH_WHAT='what.fl'
 export WAH_AND='and.pl'
 export WAH_HOW='how'
 
-[ ! -d ${project_name} ] && mkdir -p ${project_name}
-
-cd ${project_name}
-
-# generate a WHAT fly file.
-[ ! -e ./what.fl ] && touch ./what.fl
-
-# generate a AND perl file.
-[ ! -e ./and.pl ] && touch ./and.pl
-
-# generate a HOW project floder.
-[ ! -d ./how ] && mkdir -p ./how
-
-cd -
