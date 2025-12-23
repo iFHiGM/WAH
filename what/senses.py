@@ -69,8 +69,18 @@ class FileIntentSensor(Sensor):
 class TerminalInputSensor(Sensor):
     """真正的 CLI 交互 (阻塞式，不使用 interval)"""
     def run(self):
-        print("WAH Interactive Shell Ready. Type your command:")
         import sys
+        
+        # 强制 UTF-8 编码，防止中文输入报错
+        try:
+            if hasattr(sys.stdin, 'reconfigure'):
+                sys.stdin.reconfigure(encoding='utf-8', errors='replace')
+            if hasattr(sys.stdout, 'reconfigure'):
+                sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        except Exception as e:
+            print(f"Warning: Failed to set UTF-8 encoding: {e}")
+
+        print("WAH Interactive Shell Ready. Type your command:")
         
         while not self.stop_event.is_set():
             try:
