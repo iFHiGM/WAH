@@ -28,10 +28,10 @@ class Brain:
         
         if self.api_key:
             msg = f"Brain: Online. Fast: {self.fast_model}, Heavy: {self.heavy_model}"
-            print(msg)
+            print(msg) # Keep this one as it's the startup banner
             logger.info(msg)
         else:
-            print("Brain Warning: Missing GOOGLE_API_KEY.")
+            logger.warning("Brain Warning: Missing GOOGLE_API_KEY.")
 
     def _call_api(self, model_id: str, prompt: str, system_instruction: str = "") -> str:
         """底层 API 调用封装 (Streaming -> Text)"""
@@ -56,7 +56,6 @@ class Brain:
                     
                 if response.status_code != 200:
                     err = f"Brain API Error ({model_id}): {response.status_code} - {response.read().decode()[:200]}"
-                    print(err)
                     logger.error(err)
                     return "{}"
                 for chunk in response.iter_bytes():
@@ -80,7 +79,6 @@ class Brain:
             raise # Propagate up
         except Exception as e:
             err = f"Brain Network Exception: {e}"
-            print(err)
             logger.error(err)
             return "{}"
 
@@ -166,11 +164,9 @@ class Brain:
             
             if router_output:
                 msg = f"Brain Router: [{router_output.get('intent_category')}] {router_output.get('translated_command')}"
-                print(msg)
                 logger.info(msg)
             else:
                 msg = f"Brain Router: Failed to parse JSON. Raw: {raw_router[:50]}..."
-                print(msg)
                 logger.warning(msg)
                 router_output = {"translated_command": user_command, "complexity": "high"}
 
@@ -218,7 +214,6 @@ class Brain:
         """
         
         msg = f"Brain Solver ({use_model}): Thinking..."
-        print(msg)
         logger.info(msg)
         
         try:
@@ -228,7 +223,7 @@ class Brain:
             data = self._extract_json(raw_solver)
         except RateLimitError:
             logger.error(f"Brain: Model {use_model} rate limited.")
-            print("Brain: Rate limit exceeded. Please wait a moment.")
+            logger.warning("Brain: Rate limit exceeded. Please wait a moment.")
             return []
         
         intents = []
@@ -247,12 +242,10 @@ class Brain:
                 ))
         else:
             msg = f"Brain Solver: No valid intents found. Raw output:\n{raw_solver[:200]}..."
-            print(msg)
             logger.warning(msg)
             
         if not intents:
              msg = "Brain: [Empty Thought] No actions generated."
-             print(msg)
              logger.info(msg)
 
         return intents
