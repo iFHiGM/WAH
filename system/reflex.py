@@ -96,7 +96,17 @@ def handle_reflex(intent: Intent) -> str:
                 observation = f"Chat Reply: {msg}"
 
     elif intent.target_module == "system":
-        if intent.action == "create_module":
+        if intent.action == "set_objective":
+            goal = intent.params.get("goal")
+            if goal:
+                observation = f"SYSTEM_CONTROL:SET_OBJECTIVE:{goal}"
+            else:
+                observation = "Error: Parameter 'goal' is required for set_objective."
+
+        elif intent.action == "clear_objective":
+            observation = "SYSTEM_CONTROL:CLEAR_OBJECTIVE"
+
+        elif intent.action == "create_module":
             name = intent.params.get("name")
             content = intent.params.get("content")
             if name and content:

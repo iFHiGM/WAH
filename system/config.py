@@ -27,8 +27,13 @@ class Config:
     BRAIN_TIMEOUT = float(os.getenv("WAH_BRAIN_TIMEOUT", "90.0"))
     BRAIN_TEMP = float(os.getenv("WAH_BRAIN_TEMP", "0.2"))
     
+    # 运行时存储
+    WAH_HOME = ".wah"
+    OBJECTIVE_FILE = os.path.join(WAH_HOME, "active_objective")
+    LESSONS_FILE = os.path.join(WAH_HOME, "lessons_learned.org")
+    
     # 日志配置
-    LOG_FILE = "wah.log"
+    LOG_FILE = os.path.join(WAH_HOME, "wah.log")
     # 如果环境变量 WAH_DEBUG=true，则开启详细日志
     DEBUG = os.getenv("WAH_DEBUG", "false").lower() == "true"
     
@@ -36,11 +41,6 @@ class Config:
     PROTECTED_FILES = {"GENESIS.org", "README.org"}
     MEMORY_CAPACITY = 50
     SNAPSHOT_HISTORY = 20
-
-    # 运行时存储
-    WAH_HOME = ".wah"
-    OBJECTIVE_FILE = os.path.join(WAH_HOME, "active_objective")
-    LESSONS_FILE = os.path.join(WAH_HOME, "lessons_learned.org")
 
     @staticmethod
     def ensure_runtime_dir():
