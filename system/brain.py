@@ -1,182 +1,258 @@
-from what.schema import ContextSnapshot, Intent
-from typing import Optional, List, Dict, Any
-import os
 import json
-import traceback
+import httpx
 import re
-import httpx # 使用 httpx 直接调用 REST API
+import traceback
+import logging
+import os
+from typing import List, Optional
+from what.schema import ContextSnapshot, Intent
+from system.config import Config
+
+logger = logging.getLogger("WAH")
+
+class RateLimitError(Exception):
+    """Raised when API returns 429"""
+    pass
 
 class Brain:
-    """WAH 的大脑：将感知转化为意图 (Powered by Gemini via REST API)"""
+    """WAH 的大脑：语义路由 + 双路模型 + 目标导向"""
     
-    def __init__(self, project_id: str = None, location: str = "us-central1"):
-        self.project_id = project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
-        self.api_key = os.getenv("GOOGLE_API_KEY")
-        self.location = location
-        self.model_name = "gemini-3-pro-preview" 
+    def __init__(self):
+        self.project_id = Config.PROJECT_ID
+        self.api_key = Config.API_KEY
         
-        # 使用流式 API 端点
-        # https://aiplatform.googleapis.com/v1/publishers/google/models/{MODEL_ID}:streamGenerateContent
-        self.api_url = f"https://aiplatform.googleapis.com/v1/publishers/google/models/{self.model_name}:streamGenerateContent"
+        # Use Config
+        self.heavy_model = Config.MODEL_HEAVY
+        self.fast_model = Config.MODEL_FAST
+        self.api_url_template = "https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:streamGenerateContent"
         
         if self.api_key:
-            print(f"Brain: Configured for Vertex AI (Streaming, Global Endpoint, Model: {self.model_name})")
+            msg = f"Brain: Online. Fast: {self.fast_model}, Heavy: {self.heavy_model}"
+            print(msg)
+            logger.info(msg)
         else:
-            print("Brain Warning: Missing GOOGLE_API_KEY. Brain will fail.")
+            print("Brain Warning: Missing GOOGLE_API_KEY.")
 
-    def _construct_prompt(self, snapshot: ContextSnapshot, user_command: Optional[str]) -> dict:
-        """构建发送给 REST API 的 JSON Payload"""
-        
-        cmd_str = f'USER COMMAND: "{user_command}"' if user_command else "USER COMMAND: (None, check MEMORY/CONTEXT for active tasks or errors)"
-        
-        system_instruction = f"""
-You are WAH (What-And-How), an autonomous operating system kernel.
-Your goal is to translate user commands or environmental changes into precise executable INTENTS.
-
-CONTEXT:
-- Timestamp: {snapshot.timestamp}
-- Environment: {json.dumps(snapshot.environment, default=str)}
-- Memory (Recent Observations): {snapshot.short_term_memory}
-
-{cmd_str}
-
-AVAILABLE MODULES (HOW):
-1. git: commit_all(message)
-2. shell: execute(command)
-3. fs: 
-   - read(path): Read file content.
-   - write(path, content): Overwrite/Create file.
-   - replace(path, old, new): Replace text string in file.
-   - list(path): List directory contents.
-4. system: create_module(name, content) - Use this to write new Python code capabilities.
-
-INSTRUCTIONS:
-1. Analyze the context.
-2. If there is a USER COMMAND, execute it.
-3. If USER COMMAND is None, look at MEMORY. 
-   - Did the last action fail (e.g., Error, Traceback)? If so, analyze the error and fix the code (use fs.read/fs.write/fs.replace).
-   - Did it succeed? Is the task done?
-4. If the task is done or no action is needed, return empty list of intents.
-5. Return a JSON object with a list of intents. Format:
-{{
-  "intents": [ ... ]
-}}
-5. OUTPUT JSON ONLY. NO MARKDOWN.
-"""
-        return {
+    def _call_api(self, model_id: str, prompt: str, system_instruction: str = "") -> str:
+        """底层 API 调用封装 (Streaming -> Text)"""
+        if not model_id: return "{}"
+        url = self.api_url_template.format(model=model_id)
+        payload = {
             "contents": [{
                 "role": "user",
-                "parts": [{"text": system_instruction}]
+                "parts": [{"text": f"{system_instruction}\n\n{prompt}" if system_instruction else prompt}]
             }],
             "generationConfig": {
-                "temperature": 0.2,
+                "temperature": Config.BRAIN_TEMP,
                 "responseMimeType": "application/json"
             }
         }
-
-    def think(self, snapshot: ContextSnapshot, user_command: Optional[str] = None) -> List[Intent]:
-        """
-        核心思考函数 (Streaming 版)
-        """
-        # 允许 user_command 为空
-        print(f"Brain is thinking... (Command: {user_command if user_command else 'Auto'})")
-
-        if not self.api_key:
-            return self._mock_think(user_command or "")
-
+        
+        full_text = ""
         try:
-            payload = self._construct_prompt(snapshot, user_command)
-            
-            # 使用流式请求
-            client = httpx.Client(timeout=60.0)
-            full_text = ""
-            
-            with client.stream("POST", f"{self.api_url}?key={self.api_key}", json=payload) as response:
+            with httpx.Client(timeout=Config.BRAIN_TIMEOUT).stream("POST", f"{url}?key={self.api_key}", json=payload) as response:
+                if response.status_code == 429:
+                    raise RateLimitError(f"Model {model_id} exhausted")
+                    
                 if response.status_code != 200:
-                    print(f"Brain Error: API returned {response.status_code}: {response.read().decode()}")
-                    return []
-
-                # 处理流式响应块
-                # 每个 chunk 是一个 JSON 数组包含部分 candidates
+                    err = f"Brain API Error ({model_id}): {response.status_code} - {response.read().decode()[:200]}"
+                    print(err)
+                    logger.error(err)
+                    return "{}"
                 for chunk in response.iter_bytes():
                     if not chunk: continue
-                    # 注意：REST API 的流式返回是一个个 JSON 对象，通常以 '[' 开始，以 ']' 结束，
-                    # 中间的 chunk 也是 JSON。这里简化处理：我们把所有文本拼起来再解析可能会有问题，
-                    # 因为 raw stream 是: [ {item1}, {item2} ... ]
-                    # 但 httpx iter_bytes 只是字节流。我们需要一种更健壮的方式。
-                    # 最简单的方式：拼凑整个 body 字符串，然后作为 JSON 解析（如果它是标准的 JSON List）
                     full_text += chunk.decode('utf-8', errors='ignore')
-
-            # Vertex AI 的 streamGenerateContent 返回的是一个 JSON 数组
-            # [ { "candidates": ... }, { "candidates": ... } ]
-            try:
-                # 尝试解析整个数组
-                response_list = json.loads(full_text)
-                final_content = ""
-                
-                for item in response_list:
-                    if "candidates" in item and len(item["candidates"]) > 0:
-                        content = item["candidates"][0].get("content", {})
-                        parts = content.get("parts", [])
-                        for part in parts:
-                            final_content += part.get("text", "")
-                            
-                text = final_content.strip()
-                
-            except json.JSONDecodeError:
-                # 如果解析失败，可能是数据截断或者格式问题
-                print(f"Brain Error: Failed to parse streaming response JSON. Raw length: {len(full_text)}")
-                return []
-
-            # 提取 Intent JSON
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            if match:
-                json_str = match.group(0)
-                data = json.loads(json_str)
-            else:
-                print(f"Brain Warning: No JSON found in response: {text[:100]}...")
-                return []
             
-            intents = []
-            for item in data.get("intents", []):
-                # 增强健壮性：检查必要字段
-                if "target_module" not in item or "action" not in item:
-                    print(f"Brain Warning: Skipping invalid intent item: {item}")
-                    continue
-                    
-                intents.append(Intent(
-                    target_module=item["target_module"],
-                    action=item["action"],
-                    params=item.get("params", {}),
-                    reasoning=item.get("reasoning", "No reasoning provided")
-                ))
-            return intents
-
+            # Robust JSON extraction from stream
+            try:
+                response_list = json.loads(full_text)
+                final_content = "".join([
+                    part.get("text", "") 
+                    for item in response_list 
+                    if "candidates" in item 
+                    for part in item["candidates"][0].get("content", {}).get("parts", [])
+                ])
+                return final_content.strip()
+            except:
+                logger.warning(f"Brain: Failed to parse raw stream JSON from {model_id}. Raw len: {len(full_text)}")
+                return full_text # Fallback
+        except RateLimitError:
+            raise # Propagate up
         except Exception as e:
-            print(f"Brain Error: {e}")
-            traceback.print_exc()
-            return []
+            err = f"Brain Network Exception: {e}"
+            print(err)
+            logger.error(err)
+            return "{}"
 
-    def _mock_think(self, user_command: str) -> List[Intent]:
-        """旧的硬编码逻辑，作为备用"""
+    def _extract_json(self, text: str) -> dict:
+        """从模型输出中提取 JSON，处理 Markdown 包裹"""
+        try:
+            # 1. 尝试直接解析
+            return json.loads(text)
+        except:
+            pass
+        
+        # 2. 去除 Markdown 代码块 (```json ... ```)
+        text = re.sub(r'^```json\s*', '', text, flags=re.MULTILINE)
+        text = re.sub(r'^```\s*', '', text, flags=re.MULTILINE)
+        text = re.sub(r'```$', '', text.strip())
+        
+        # 3. 正则提取最外层 {} (Improved for Robustness)
+        # Find the first '{' and the last '}' to handle partial or dirty output
+        start = text.find('{')
+        end = text.rfind('}')
+        
+        if start != -1 and end != -1 and end > start:
+            json_str = text[start:end+1]
+            try:
+                return json.loads(json_str)
+            except:
+                pass
+        
+        return {}
+
+    def _get_dynamic_tools(self) -> str:
+        """动态发现 how/ 目录下的扩展能力"""
+        tools = []
+        try:
+            ignore = {"__init__", "fs", "git", "shell", "models"}
+            for f in os.listdir("how"):
+                if f.endswith(".py"):
+                    name = f[:-3]
+                    if name not in ignore:
+                        tools.append(name)
+        except:
+            pass
+        
+        if not tools:
+            return ""
+        
+        return "\n        - [Dynamic] " + ", ".join([f"{t}: <unknown_methods>" for t in tools])
+
+    def think(self, snapshot: ContextSnapshot, user_command: Optional[str] = None, memory_objective: Optional[str] = None) -> List[Intent]:
+        # ... (Router logic unchanged) ...
+        
+        # --- Step 1: Semantic Routing (Fast Model) ---
+        router_output = {}
+        if user_command and user_command.startswith("SYSTEM_INTERNAL:"):
+            # Bypass router for internal triggers
+            logger.info(f"Brain: Internal Trigger '{user_command}'")
+            router_output = {
+                "intent_category": "system",
+                "complexity": "high", # Reflection is complex
+                "translated_command": user_command
+            }
+        elif user_command:
+            logger.info(f"Brain: Routing command '{user_command}' via {self.fast_model}...")
+            
+            routing_prompt = f"""
+            Analyze USER INPUT: "{user_command}"
+            
+            Output JSON:
+            {{
+                "language": "en/zh/...",
+                "intent_category": "chat | coding | system | investigation",
+                "complexity": "low | high",
+                "translated_command": "Translate to clear English instruction",
+                "suggested_objective": "If this implies a long running task, summarize it as a goal string. Else null."
+            }}
+            """
+            try:
+                raw_router = self._call_api(self.fast_model, routing_prompt)
+                router_output = self._extract_json(raw_router)
+            except RateLimitError:
+                logger.warning("Brain: Fast model rate limited. Skipping router.")
+                router_output = {}
+            
+            if router_output:
+                msg = f"Brain Router: [{router_output.get('intent_category')}] {router_output.get('translated_command')}"
+                print(msg)
+                logger.info(msg)
+            else:
+                msg = f"Brain Router: Failed to parse JSON. Raw: {raw_router[:50]}..."
+                print(msg)
+                logger.warning(msg)
+                router_output = {"translated_command": user_command, "complexity": "high"}
+
+        # ... (Objective logic same as before) ...
+        active_goal = router_output.get("suggested_objective") or memory_objective
+        effective_command = router_output.get("translated_command") or user_command or "(Continue with current objective)"
+        
+        # 决定使用哪个模型
+        use_model = self.heavy_model
+        if router_output.get("intent_category") == "chat" and router_output.get("complexity") == "low":
+            use_model = self.fast_model
+            
+        # --- Step 2: Solver (Heavy Model) ---
+        
+        dynamic_tools_str = self._get_dynamic_tools()
+        
+        context_str = f"""
+        Timestamp: {snapshot.timestamp}
+        Active Objective: {active_goal}
+        Recent Observations: {snapshot.short_term_memory}
+        """
+        
+        system_instruction = f"""
+        You are WAH (What-And-How, my dear), an Evolutionary Kernel.
+        - Your goal is Emergent INTENTS.
+        
+        MISSION PRIORITY:
+        1. **USER COMMAND**: "{effective_command}" (HIGHEST PRIORITY. If this contradicts the Objective, OBEY the User. If it is "stop" or "pause", clear the objective.)
+        2. **ACTIVE OBJECTIVE**: "{active_goal}" (Execute this UNLESS User Command overrides it.)
+        
+        TOOLS:
+        - system: set_objective(goal), clear_objective(), create_module(name, content)
+        - fs: read/write/replace/list(path)
+        - git: commit_all(message)
+        - shell: execute(cmd)
+        - chat: reply(text){dynamic_tools_str}
+        
+        PROTOCOL:
+        - If 'active_goal' is new/changed, first intent MUST be 'system.set_objective'.
+        - If 'active_goal' is completed, last intent MUST be 'system.clear_objective'.
+        - If checking environment (ls, cat), do NOT output chat.reply yet. Wait for Observation.
+        - **VERIFICATION RULE**: After writing/replacing a file, you MUST immediately read it back to verify the change in the next step.
+        - Output JSON list of intents. Format: 
+          {{ "intents": [ {{ "target_module": "...", "action": "...", "params": {{...}}, "reasoning": "..." }} ] }}
+        """
+        
+        msg = f"Brain Solver ({use_model}): Thinking..."
+        print(msg)
+        logger.info(msg)
+        
+        try:
+            raw_solver = self._call_api(use_model, context_str, system_instruction)
+            # 移除截断，记录完整日志以便调试
+            logger.debug(f"Brain Solver Raw Output: {raw_solver}")
+            data = self._extract_json(raw_solver)
+        except RateLimitError:
+            logger.error(f"Brain: Model {use_model} rate limited.")
+            print("Brain: Rate limit exceeded. Please wait a moment.")
+            return []
+        
         intents = []
-        if "install emacs" in user_command.lower():
-            intents.append(Intent(
-                target_module="shell",
-                action="execute",
-                params={"command": "sudo apt-get update && sudo apt-get install -y emacs"},
-                reasoning="[Mock] User wants to install Emacs."
-            ))
-        elif "weather" in user_command.lower() or "天气" in user_command:
-            weather_code = """
-import random
-def get_weather():
-    return f"Weather: {random.choice(['Sunny', 'Rainy'])} 25C"
-"""
-            intents.append(Intent(
-                target_module="system",
-                action="create_module",
-                params={"name": "weather", "content": weather_code},
-                reasoning="[Mock] Generating weather module."
-            ))
+        if data:
+            for item in data.get("intents", []):
+                # Robust extraction to avoid TypeError on unknown fields
+                # Handle common model hallucination where it uses 'tool' instead of 'target_module'
+                target = item.get("target_module") or item.get("tool")
+                if not target: continue
+                
+                intents.append(Intent(
+                    target_module=target,
+                    action=item.get("action", "unknown"),
+                    params=item.get("params", {}),
+                    reasoning=item.get("reasoning", "")
+                ))
+        else:
+            msg = f"Brain Solver: No valid intents found. Raw output:\n{raw_solver[:200]}..."
+            print(msg)
+            logger.warning(msg)
+            
+        if not intents:
+             msg = "Brain: [Empty Thought] No actions generated."
+             print(msg)
+             logger.info(msg)
+
         return intents

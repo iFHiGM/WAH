@@ -1,0 +1,30 @@
+#+TITLE: WAH Project Context & Plan
+#+LAST_UPDATED: 2025-12-24
+
+* System Status
+- **Era**: Phase 3 (Self-Learning Kernel)
+- **Protection**: GENESIS.org/README.org immutable.
+
+* Architecture
+- [x] **Event Bus**: system/bus.py
+- [x] **Stateless Brain**: Client-side context windowing.
+- [x] **Dual-Model**: Verified Gemini 3 & 2.5.
+- [x] **Persistence**: Objective saved to .wah/active_objective.
+- [x] **Protection**: how/fs.py enforces immutability.
+- [x] **Idle Architecture**: Self-reflection during downtime (system/main.py).
+- [x] **Runtime Config**: Centralized configuration in system/config.py.
+
+* Active Tasks
+- [x] **Stabilize**: 
+  - [x] Test multi-step tasks (tests/test_multistep.py).
+  - [x] Implement "Circuit Breaker" to prevent post-task infinite loops.
+  - [x] Implement "Write-Verify" protocol in Brain.
+- [ ] **Phase 4**: The Transmutation (Emacs/Lisp Bridge).
+
+* Backlog
+- [ ] **Watchdog**: Real-time file monitoring (watchdog library).
+- [ ] **Memory Compression**: Summarize old observations instead of FIFO dropping.
+
+* Notes
+- **Context Design**: We avoid server-side session state. We send a specific "Context Snapshot" every time. 
+- **Self-Learning**: The system can now read `lessons_learned.org` during idle time and apply patches to itself.

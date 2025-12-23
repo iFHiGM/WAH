@@ -1,0 +1,15 @@
+# Environments
+.env
+.venv
+venv/
+__pycache__/
+
+# WAH Runtime
+.wah/
+
+# Logs
+*.log
+*.log.*
+
+# OS
+.DS_Store

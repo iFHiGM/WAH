@@ -1,5 +1,12 @@
 import os
 
+PROTECTED_FILES = ["GENESIS.org", "README.org"]
+
+def _check_protected(path: str):
+    basename = os.path.basename(path)
+    if basename in PROTECTED_FILES:
+        raise PermissionError(f"Access Denied: {basename} is immutable per GENESIS protocol.")
+
 def read_file(path: str, limit: int = 2000) -> str:
     """读取文件内容，默认限制长度以节省 Token"""
     if not os.path.exists(path):
@@ -16,6 +23,7 @@ def read_file(path: str, limit: int = 2000) -> str:
 def write_file(path: str, content: str) -> str:
     """写入（覆盖）文件"""
     try:
+        _check_protected(path)
         dir_name = os.path.dirname(path)
         if dir_name and not os.path.exists(dir_name):
             os.makedirs(dir_name)
@@ -27,16 +35,18 @@ def write_file(path: str, content: str) -> str:
 
 def replace_text(path: str, old: str, new: str) -> str:
     """简单的文本替换"""
-    if not os.path.exists(path):
-        return f"Error: File {path} not found."
     try:
+        _check_protected(path)
+        if not os.path.exists(path):
+            return f"Error: File {path} not found."
+        
         with open(path, 'r', encoding='utf-8') as f:
             content = f.read()
         
         if old not in content:
             return f"Error: 'old_string' not found in {path}."
         
-        new_content = content.replace(old, new, 1) # 默认只替换一次，防止误伤
+        new_content = content.replace(old, new, 1) # 默认只替换一次
         
         with open(path, 'w', encoding='utf-8') as f:
             f.write(new_content)
