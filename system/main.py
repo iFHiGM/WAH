@@ -41,8 +41,22 @@ def life_loop():
     # 3. Main Loop (Consumer)
     try:
         while True:
+            # --- HOT RELOAD CHECK ---
+            if Config.RELOAD_SIGNAL:
+                logger.info("KERNEL: Reload Signal Detected. Initiating Hot Reload.")
+                print("SYSTEM: Hot Reloading...")
+                try:
+                    memory.dump_state()
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+                    # Re-execute the current script with the same arguments
+                    os.execv(sys.executable, [sys.executable] + sys.argv)
+                except Exception as e:
+                    logger.error(f"Reload Failed: {e}")
+                    Config.RELOAD_SIGNAL = False
+
             # Wait for event
-            event = bus.get(timeout=5.0) 
+            event = bus.get(timeout=1.0) 
             
             if not event:
                 # IDLE CHECK
@@ -59,49 +73,33 @@ def life_loop():
 
             logger.debug(f"KERNEL: Consuming Event {event.type.name} (Priority {event.priority}) Source: {event.source}")
             
-            # --- HOT RELOAD HANDLER ---
-            should_reload = False
-            if event.type == EventType.USER_COMMAND:
-                if isinstance(event.payload, str) and event.payload.strip().lower() == "reload":
-                    should_reload = True
-            
-            if should_reload:
-                logger.info("HOT RELOAD TRIGGERED. Dumping memory and restarting...")
-                memory.dump_context()
-                
-                # Restart process
-                python = sys.executable
-                os.execl(python, python, *sys.argv)
-            
-            # 4. Context Building
+            # 1. Update Memory
+            if event.type == EventType.BRAIN_OBSERVATION:
+                memory.add_observation(event.payload)
+            elif event.type == EventType.USER_COMMAND:
+                memory.add_observation(f"USER: {event.payload}")
+            elif event.type == EventType.FILE_CHANGE:
+                memory.add_observation(f"FS: {event.payload}")
+            elif event.type == EventType.SYSTEM_ERROR:
+                memory.add_observation(f"ERROR: {event.payload}")
+
+            # 2. Snapshot
             snapshot = ContextSnapshot(
-                timestamp=time.time(),
-                event=event,
-                memory_summary=f"Objective: {memory.active_objective} | Obs: {len(memory.short_term_observations)}",
-                active_objective=memory.active_objective
+                environment={"cwd": os.getcwd()},
+                system_state={"active_objective": memory.active_objective},
+                short_term_memory=memory.short_term_observations[-10:]
             )
             memory.save_snapshot(snapshot)
-            
-            # 5. Brain Processing (Think)
-            intent = brain.think(memory, event)
-            
-            if intent:
-                logger.info(f"INTENT: {intent.target_module}.{intent.action}")
-                
-                # 6. Reflex/Action (Act)
-                observation = handle_reflex(intent)
-                
-                # 7. Feedback Loop
-                if observation:
-                    memory.add_observation(observation)
-                    
-                    # Check for reload intent from Brain
-                    if intent.target_module == "system" and intent.action == "reload":
-                         logger.info("Brain requested RELOAD.")
-                         memory.dump_context()
-                         python = sys.executable
-                         os.execl(python, python, *sys.argv)
 
+            # 3. Brain Processing
+            if event.type in [EventType.USER_COMMAND, EventType.FILE_CHANGE, EventType.IDLE, EventType.SYSTEM_CONTROL]:
+                intents = brain.think(memory)
+                for intent in intents:
+                    # Execute Reflex
+                    obs = handle_reflex(intent)
+                    if obs:
+                        bus.put(Event.observation(obs))
+                        
     except KeyboardInterrupt:
-        print("\nStopping WAH Kernel...")
+        print("\nWAH Kernel Stopping...")
         logger.info("WAH Kernel Stopped by User")

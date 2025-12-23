@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
 from what.schema import ContextSnapshot
 from system.config import Config
 import time
@@ -32,6 +32,41 @@ class Memory:
             except Exception:
                 pass
 
+    def set_objective(self, objective: str):
+        self.active_objective = objective
+        try:
+            with open(Config.OBJECTIVE_FILE, 'w', encoding='utf-8') as f:
+                f.write(objective)
+        except Exception:
+            pass
+
+    def clear_objective(self):
+        self.active_objective = None
+        if os.path.exists(Config.OBJECTIVE_FILE):
+            try:
+                os.remove(Config.OBJECTIVE_FILE)
+            except Exception:
+                pass
+
+    def save_snapshot(self, snapshot: ContextSnapshot):
+        self.snapshots.append(snapshot)
+        if len(self.snapshots) > 40:
+            self.snapshots.pop(0)
+
+    def add_observation(self, observation: str):
+        timestamp = time.strftime("%H:%M:%S", time.localtime())
+        entry = f"[{timestamp}] {observation}"
+        self.short_term_observations.append(entry)
+        if len(self.short_term_observations) > self.capacity:
+            self.short_term_observations.pop(0)
+
+    def get_context(self) -> Dict:
+        return {
+            "objective": self.active_objective,
+            "recent_observations": self.short_term_observations[-15:],
+            "history_count": len(self.short_term_observations)
+        }
+
     def _restore_state(self):
         """Restore short-term memory from dump if exists (after hot reload)."""
         dump_file = getattr(Config, 'MEMORY_DUMP_FILE', os.path.join(Config.WAH_HOME, 'memory_dump.json'))
@@ -56,41 +91,6 @@ class Memory:
             }
             with open(dump_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f)
-            logger.info(f"Memory dumped to {dump_file}")
+            logger.info(f"Memory state dumped to {dump_file}")
         except Exception as e:
-            logger.error(f"Failed to dump memory: {e}")
-
-    def set_objective(self, objective: str):
-        self.active_objective = objective
-        try:
-            with open(Config.OBJECTIVE_FILE, 'w', encoding='utf-8') as f:
-                f.write(objective)
-        except Exception:
-            pass
-
-    def clear_objective(self):
-        self.active_objective = None
-        if os.path.exists(Config.OBJECTIVE_FILE):
-            try:
-                os.remove(Config.OBJECTIVE_FILE)
-            except Exception:
-                pass
-
-    def save_snapshot(self, snapshot: ContextSnapshot):
-        """Save current context snapshot."""
-        self.snapshots.append(snapshot)
-        if len(self.snapshots) > Config.SNAPSHOT_HISTORY:
-            self.snapshots.pop(0)
-
-    def add_observation(self, observation: str):
-        """
-        Record an observation.
-        """
-        timestamp = time.strftime("%H:%M:%S", time.localtime())
-        entry = f"[{timestamp}] {observation}"
-        self.short_term_observations.append(entry)
-        if len(self.short_term_observations) > self.capacity:
-            self.short_term_observations.pop(0)
-            
-    def get_recent_observations(self, limit: int = 10) -> List[str]:
-        return self.short_term_observations[-limit:]
+            logger.error(f"Failed to dump memory state: {e}")

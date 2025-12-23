@@ -4,15 +4,13 @@ import time
 from enum import Enum, auto
 
 class EventType(Enum):
-    USER_COMMAND = auto()    # 用户输入
-    FILE_CHANGE = auto()     # 系统变更 (Git/Watchdog)
-    SYSTEM_ERROR = auto()    # 系统错误/异常
-    BRAIN_OBSERVATION = auto() # Brain 执行结果/反馈
-    TICK = auto()            # 心跳 (用于定时任务)
-    IDLE = auto()            # 系统空闲
-    SYSTEM_CONTROL = auto()  # 系统控制 (Reload/Shutdown)
-    SYSTEM_CONTROL = auto()  # System Control (Reload/Shutdown)
-    SYSTEM_CONTROL = auto()  # 系统控制 (Reload/Shutdown)
+    USER_COMMAND = auto()    # User Input
+    FILE_CHANGE = auto()     # FS Change
+    SYSTEM_ERROR = auto()    # Error
+    BRAIN_OBSERVATION = auto() # Brain Output
+    TICK = auto()            # Heartbeat
+    IDLE = auto()            # Idle
+    SYSTEM_CONTROL = auto()  # Reload/Shutdown
 
 @dataclass(order=True)
 class Event:
