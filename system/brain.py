@@ -152,7 +152,7 @@ class Brain:
                 "intent_category": "chat | coding | system | investigation",
                 "complexity": "low | high",
                 "translated_command": "Translate to clear English instruction",
-                "suggested_objective": "If this implies a long running task, summarize it as a goal string. Else null."
+                "suggested_objective": "Summarize the immediate goal. Even for chat/questions, provide a goal (e.g., 'Answer user question'). Avoid null unless absolutely trivial."
             }}
             """
             try:
