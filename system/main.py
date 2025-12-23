@@ -20,10 +20,6 @@ logger = get_logger()
 def life_loop():
     print("WAH Kernel Starting... (Tail 'wah.log' for debug info)")
     logger.info("WAH Kernel Session Started")
-    git_sensor = GitSensor()
-    intent_sensor = IntentSensor()
-    brain = Brain()
-    memory = Memory()
     
     # 1. Infrastructure
     bus = EventBus()
