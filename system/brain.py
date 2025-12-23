@@ -248,4 +248,21 @@ class Brain:
              msg = "Brain: [Empty Thought] No actions generated."
              logger.info(msg)
 
+        # --- Step 3: Auto-inject Objective (Robustness) ---
+        suggested_goal = router_output.get("suggested_objective")
+        if suggested_goal and suggested_goal != memory_objective:
+            # Check if Solver already did it
+            already_set = False
+            if intents and intents[0].target_module == "system" and intents[0].action == "set_objective":
+                already_set = True
+            
+            if not already_set:
+                logger.info(f"Brain: Auto-injecting 'set_objective' for goal: {suggested_goal}")
+                intents.insert(0, Intent(
+                    target_module="system",
+                    action="set_objective",
+                    params={"goal": suggested_goal},
+                    reasoning="Auto-setting objective suggested by Router"
+                ))
+
         return intents
