@@ -62,11 +62,8 @@ class FileIntentSensor(Sensor):
                     timestamp = int(time.time())
                     os.rename(self.file_path, f"{self.file_path}.{timestamp}.done")
                     
-                    print(f"DEBUG: FileIntentSensor found command: {content}, putting to bus...")
                     self.bus.put(Event.user(content))
-                    print("DEBUG: Event put successfully.")
             except Exception as e:
-                print(f"DEBUG: Sensor Error: {e}")
                 pass
 
 class TerminalInputSensor(Sensor):

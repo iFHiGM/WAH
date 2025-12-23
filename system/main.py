@@ -120,11 +120,13 @@ def life_loop():
                 memory.add_observation(msg)
                 logger.info(msg)
 
-            # 标记任务完成
-            # bus.task_done() # PriorityQueue 没有 task_done，只有 Queue 有
-
     except KeyboardInterrupt:
         print("\nWAH Kernel Stopping...")
+    except Exception as e:
+        logger.critical("CRITICAL KERNEL CRASH", exc_info=True)
+        print(f"\nCRITICAL ERROR: {e}")
+        print("Detailed traceback logged to 'wah.log'.")
+        # Optional: Attempt clean shutdown or state dump here
     finally:
         for s in sensors:
             s.stop()
