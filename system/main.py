@@ -110,8 +110,12 @@ def life_loop():
                 # 熔断机制：如果没有活跃目标，Observation 仅存入记忆，不触发思考
                 # 这防止了任务完成后，Agent 对“任务完成”这个事实本身进行过度反应，导致死循环
                 if memory.active_objective:
-                    intents = brain.think(snapshot, None, memory.active_objective)
-                    execute_intents(intents, bus, memory)
+                    # Debounce: 只有当事件队列为空时才触发思考，避免对批量事件（如 set_objective + reply）产生重复反应
+                    if bus.empty():
+                        intents = brain.think(snapshot, None, memory.active_objective)
+                        execute_intents(intents, bus, memory)
+                    else:
+                        logger.debug("KERNEL: Pending events in queue. Delaying Brain thought.")
                 else:
                     logger.info("KERNEL: No active objective. Observation absorbed without triggering Brain.")
 
