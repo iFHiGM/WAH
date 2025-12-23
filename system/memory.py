@@ -19,7 +19,7 @@ class Memory:
         self.short_term_observations: List[str] = [] 
         self.active_objective: Optional[str] = None
         self._load_objective()
-        self._restore_context()
+        self._restore_state()
 
     def _load_objective(self):
         """Load active objective from disk if exists."""
@@ -62,38 +62,53 @@ class Memory:
         entry = f"[{timestamp}] {observation}"
         
         self.short_term_observations.append(entry)
-        
-        # Pruning
         if len(self.short_term_observations) > self.capacity:
-            self.short_term_observations = self.short_term_observations[-self.capacity:]
-
-    def get_recent_observations(self, limit: int = 10) -> List[str]:
-        return self.short_term_observations[-limit:]
+            self.short_term_observations.pop(0)
 
     def dump_state(self):
         """Persist short-term memory to disk before hot reload."""
-        dump_file = getattr(Config, 'MEMORY_DUMP_FILE', os.path.join(Config.WAH_HOME, "memory_dump.json"))
         try:
             data = {
                 "short_term_observations": self.short_term_observations
             }
-            with open(dump_file, 'w', encoding='utf-8') as f:
+            with open(Config.MEMORY_DUMP_FILE, 'w', encoding='utf-8') as f:
                 json.dump(data, f)
-            logger.info(f"Memory state dumped to {dump_file}")
+            logger.info(f"Memory state dumped to {Config.MEMORY_DUMP_FILE}")
         except Exception as e:
             logger.error(f"Failed to dump memory state: {e}")
 
-    def _restore_context(self):
+    def _restore_state(self):
         """Restore short-term memory from dump if exists (after hot reload)."""
-        dump_file = getattr(Config, 'MEMORY_DUMP_FILE', os.path.join(Config.WAH_HOME, "memory_dump.json"))
-        if os.path.exists(dump_file):
+        if os.path.exists(Config.MEMORY_DUMP_FILE):
             try:
-                with open(dump_file, 'r', encoding='utf-8') as f:
+                with open(Config.MEMORY_DUMP_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     self.short_term_observations = data.get("short_term_observations", [])
-                os.remove(dump_file)
+                
+                # Clean up dump file
+                os.remove(Config.MEMORY_DUMP_FILE)
+                
                 timestamp = time.strftime("%H:%M:%S", time.localtime())
                 self.short_term_observations.append(f"[{timestamp}] SYSTEM: Memory restored after Hot Reload.")
-                logger.info("Memory state restored.")
+                logger.info("Memory state restored successfully.")
             except Exception as e:
-                logger.error(f"Failed to restore memory: {e}")
+                logger.error(f"Failed to restore memory state: {e}")
+
+    def get_context_block(self) -> str:
+        """Return formatted context for the Brain."""
+        context = []
+        
+        # 1. Objective
+        if self.active_objective:
+            context.append(f"ACTIVE OBJECTIVE: {self.active_objective}")
+        else:
+            context.append("ACTIVE OBJECTIVE: None (Idle)")
+            
+        # 2. Short-term Memory
+        context.append("\nRECENT OBSERVATIONS:")
+        if self.short_term_observations:
+            context.extend(self.short_term_observations[-15:]) # Last 15
+        else:
+            context.append("(None)")
+            
+        return "\n".join(context)

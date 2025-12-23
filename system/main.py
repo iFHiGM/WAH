@@ -1,6 +1,7 @@
 import time
 import sys
 import os
+import json
 
 # Add root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -63,45 +64,66 @@ def life_loop():
             if event.type == EventType.USER_COMMAND:
                 cmd = event.payload.strip().lower()
                 if cmd == "reload":
-                    logger.info("KERNEL: Hot Reload Triggered by User.")
+                    logger.info("HOT RELOAD TRIGGERED BY USER")
                     print("Initiating Hot Reload...")
                     memory.dump_state()
                     
                     # Restart process
-                    # We use os.execv to replace the current process with a new one
+                    # We use sys.executable and sys.argv to restart the script
                     python = sys.executable
-                    os.execv(python, [python] + sys.argv)
+                    os.execl(python, python, *sys.argv)
             
+            # Update Memory
+            if event.type == EventType.USER_COMMAND:
+                memory.add_observation(f"USER: {event.payload}")
+            elif event.type == EventType.FILE_CHANGE:
+                memory.add_observation(f"FILE: {event.payload}")
+            elif event.type == EventType.SYSTEM_ERROR:
+                memory.add_observation(f"ERROR: {event.payload}")
+            elif event.type == EventType.BRAIN_OBSERVATION:
+                memory.add_observation(f"BRAIN: {event.payload}")
+
             # 4. Context Building
             snapshot = ContextSnapshot(
-                timestamp=event.timestamp,
-                event_type=event.type.name,
-                event_payload=str(event.payload),
-                active_objective=memory.active_objective,
-                recent_observations=memory.get_recent_observations()
+                timestamp=time.time(),
+                objective=memory.active_objective,
+                short_term_memory=list(memory.short_term_observations),
+                event_trigger=event
             )
             memory.save_snapshot(snapshot)
-            
+
             # 5. Brain Processing (Think)
-            intent = brain.think(memory.active_objective, snapshot, memory.short_term_observations)
+            # Only think if there is an objective OR it's a direct command OR Idle event
+            should_think = (
+                memory.active_objective is not None or 
+                event.type == EventType.USER_COMMAND or
+                event.type == EventType.IDLE
+            )
             
-            if intent:
-                logger.info(f"BRAIN: Intent generated -> {intent.action} on {intent.target_module}")
+            if should_think:
+                intent = brain.think(memory, event)
                 
-                # 6. Reflex (Act)
-                observation = handle_reflex(intent)
-                
-                # 7. Feedback (Learn/Memorize)
-                if observation:
-                    print(f">> {observation}")
-                    memory.add_observation(observation)
+                if intent:
+                    logger.info(f"Brain Intent: {intent.action} on {intent.target_module}")
                     
-                    # If intent was to set objective, update memory
-                    if intent.target_module == "system" and intent.action == "set_objective":
-                        memory.set_objective(intent.params.get("goal"))
-                    elif intent.target_module == "system" and intent.action == "clear_objective":
-                        memory.clear_objective()
+                    # Execute Intent (Reflex)
+                    observation = handle_reflex(intent)
+                    
+                    # Feedback Loop
+                    if observation:
+                        bus.put(Event.observation(observation))
+                        
+                        # Check for Reload Intent from Brain
+                        if intent.target_module == "system" and intent.action == "reload":
+                             logger.info("HOT RELOAD TRIGGERED BY BRAIN")
+                             print("Initiating Hot Reload (Brain)...")
+                             memory.dump_state()
+                             python = sys.executable
+                             os.execl(python, python, *sys.argv)
 
     except KeyboardInterrupt:
-        print("\nStopping WAH Kernel...")
+        print("\nWAH Kernel Stopping...")
         logger.info("WAH Kernel Stopped by User")
+    except Exception as e:
+        logger.critical(f"WAH Kernel Crashed: {e}", exc_info=True)
+        raise
