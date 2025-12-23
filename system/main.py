@@ -2,7 +2,7 @@ import time
 import sys
 import os
 
-# 将根目录添加到路径中
+# Add root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from system.bus import EventBus
@@ -32,7 +32,7 @@ def life_loop():
         FileIntentSensor(bus),
     ]
     
-    # 强制开启 CLI 传感器，以便支持管道输入测试
+    # CLI Sensor
     sensors.append(TerminalInputSensor(bus))
     
     for s in sensors:
@@ -41,16 +41,15 @@ def life_loop():
     # 3. Main Loop (Consumer)
     try:
         while True:
-            # 阻塞等待事件 (带超时以支持空闲检测)
+            # Wait for event
             event = bus.get(timeout=5.0) 
             
             if not event:
                 # IDLE CHECK
                 if not memory.active_objective:
-                    # 仅当有“教训”待消化时才触发 IDLE 事件，避免无意义的 Token 消耗
                     if os.path.exists(Config.LESSONS_FILE):
                         try:
-                            if os.path.getsize(Config.LESSONS_FILE) > 10: # Ignore empty/header-only files
+                            if os.path.getsize(Config.LESSONS_FILE) > 10:
                                 logger.info("KERNEL: System Idle. Detected unlearned lessons. Triggering Self-Reflection.")
                                 event = Event(priority=10, type=EventType.IDLE, payload=f"{Config.LESSONS_FILE} available", source="system")
                         except:
@@ -58,100 +57,51 @@ def life_loop():
                 
                 if not event: continue
 
-            # 日志记录内部事件
             logger.debug(f"KERNEL: Consuming Event {event.type.name} (Priority {event.priority}) Source: {event.source}")
-
+            
+            # --- HOT RELOAD HANDLER ---
             if event.type == EventType.USER_COMMAND:
-                logger.info(f"USER COMMAND: {event.payload}")
-                print(f"Processing command: {event.payload}...")
+                cmd = event.payload.strip().lower()
+                if cmd == "reload":
+                    logger.info("KERNEL: Hot Reload Triggered by User.")
+                    print("Initiating Hot Reload...")
+                    memory.dump_state()
+                    
+                    # Restart process
+                    # We use os.execv to replace the current process with a new one
+                    python = sys.executable
+                    os.execv(python, [python] + sys.argv)
+            
+            # 4. Context Building
+            snapshot = ContextSnapshot(
+                timestamp=event.timestamp,
+                event_type=event.type.name,
+                event_payload=str(event.payload),
+                active_objective=memory.active_objective,
+                recent_observations=memory.get_recent_observations()
+            )
+            memory.save_snapshot(snapshot)
+            
+            # 5. Brain Processing (Think)
+            intent = brain.think(memory.active_objective, snapshot, memory.short_term_observations)
+            
+            if intent:
+                logger.info(f"BRAIN: Intent generated -> {intent.action} on {intent.target_module}")
                 
-                snapshot = ContextSnapshot(
-                    environment={"last_event": "user_command"},
-                    short_term_memory=memory.get_recent_observations()
-                )
-                memory.save_snapshot(snapshot)
-
-                # 传入当前目标
-                intents = brain.think(snapshot, event.payload, memory.active_objective)
-                execute_intents(intents, bus, memory)
-
-            elif event.type == EventType.IDLE:
-                 # 空闲自省模式
-                print("WAH: Idle... Checking lessons learned.")
-                snapshot = ContextSnapshot(
-                    environment={"last_event": "idle_reflection"},
-                    short_term_memory=memory.get_recent_observations()
-                )
+                # 6. Reflex (Act)
+                observation = handle_reflex(intent)
                 
-                # 构造一个特殊的 Prompt 让 Brain 处理自省
-                # 这里我们复用 think，但传入特殊的命令
-                intents = brain.think(snapshot, f"SYSTEM_INTERNAL: Perform Self-Reflection based on {Config.LESSONS_FILE}", memory.active_objective)
-                execute_intents(intents, bus, memory)
-
-            elif event.type == EventType.BRAIN_OBSERVATION:
-                # 检查是否是系统控制指令
-                obs = event.payload
-                if obs.startswith("SYSTEM_CONTROL:SET_OBJECTIVE:"):
-                    goal = obs.replace("SYSTEM_CONTROL:SET_OBJECTIVE:", "")
-                    memory.set_objective(goal)
-                elif obs == "SYSTEM_CONTROL:CLEAR_OBJECTIVE":
-                    memory.clear_objective()
-                else:
-                    memory.add_observation(obs)
-                
-                logger.debug(f"OBSERVATION: {obs[:100]}...")
-                
-                snapshot = ContextSnapshot(
-                    environment={"last_event": "observation"},
-                    short_term_memory=memory.get_recent_observations()
-                )
-                memory.save_snapshot(snapshot)
-
-                # 熔断机制：如果没有活跃目标，Observation 仅存入记忆，不触发思考
-                # 这防止了任务完成后，Agent 对“任务完成”这个事实本身进行过度反应，导致死循环
-                if memory.active_objective:
-                    # Anti-Loop: Do not trigger Brain on self-generated Chat Replies
-                    if obs.startswith("Chat Reply:"):
-                        logger.info("KERNEL: Skipping Brain trigger for Chat Reply to prevent loop.")
-                    # Debounce: 只有当事件队列为空时才触发思考，避免对批量事件（如 set_objective + reply）产生重复反应
-                    elif bus.empty():
-                        # Prevent loop on Chat Reply: Do not re-trigger Brain immediately after speaking.
-                        if not obs.startswith("Chat Reply:"):
-                            intents = brain.think(snapshot, None, memory.active_objective)
-                            execute_intents(intents, bus, memory)
-                        else:
-                            logger.info("KERNEL: Skipping Brain trigger for Chat Reply to prevent loop.")
-                    else:
-                        logger.debug("KERNEL: Pending events in queue. Delaying Brain thought.")
-                else:
-                    logger.info("KERNEL: No active objective. Observation absorbed without triggering Brain.")
-
-            elif event.type == EventType.FILE_CHANGE:
-                msg = f"Environment Change: {event.payload}"
-                memory.add_observation(msg)
-                logger.info(msg)
+                # 7. Feedback (Learn/Memorize)
+                if observation:
+                    print(f">> {observation}")
+                    memory.add_observation(observation)
+                    
+                    # If intent was to set objective, update memory
+                    if intent.target_module == "system" and intent.action == "set_objective":
+                        memory.set_objective(intent.params.get("goal"))
+                    elif intent.target_module == "system" and intent.action == "clear_objective":
+                        memory.clear_objective()
 
     except KeyboardInterrupt:
-        print("\nWAH Kernel Stopping...")
-    except Exception as e:
-        logger.critical("CRITICAL KERNEL CRASH", exc_info=True)
-        print(f"\nCRITICAL ERROR: {e}")
-        print("Detailed traceback logged to 'wah.log'.")
-        # Optional: Attempt clean shutdown or state dump here
-    finally:
-        for s in sensors:
-            s.stop()
-
-def execute_intents(intents, bus, memory):
-    """执行意图并将结果作为新事件发布"""
-    for intent in intents:
-        # 如果不是纯聊天的 ACT，记录到日志
-        if intent.target_module != "chat":
-            logger.info(f"ACT: {intent.reasoning}")
-        
-        observation = handle_reflex(intent)
-        if observation:
-            bus.put(Event.observation(observation))
-
-if __name__ == "__main__":
-    life_loop()
+        print("\nStopping WAH Kernel...")
+        logger.info("WAH Kernel Stopped by User")

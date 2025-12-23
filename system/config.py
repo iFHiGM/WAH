@@ -19,7 +19,7 @@ class Config:
     PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
     API_KEY = os.getenv("GOOGLE_API_KEY")
     
-    # 模型配置 (动态获取)
+    # 置 (动态获取)
     MODEL_HEAVY = get_best_heavy_model()
     MODEL_FAST = get_best_fast_model()
     
@@ -31,7 +31,11 @@ class Config:
     WAH_HOME = ".wah"
     OBJECTIVE_FILE = os.path.join(WAH_HOME, "active_objective")
     LESSONS_FILE = os.path.join(WAH_HOME, "lessons_learned.org")
+    MEMORY_DUMP_FILE = os.path.join(WAH_HOME, "memory_dump.json")
     
+    # Runtime Flags
+    RELOAD_SIGNAL = False
+
     # 日志配置
     LOG_FILE = os.path.join(WAH_HOME, "wah.log")
     # 如果环境变量 WAH_DEBUG=true，则开启详细日志

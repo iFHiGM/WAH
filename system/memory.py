@@ -3,11 +3,15 @@ from what.schema import ContextSnapshot
 from system.config import Config
 import time
 import os
+import json
+from system.logger import get_logger
+
+logger = get_logger()
 
 class Memory:
     """
-     (Hippocampus)
-    负责存储短期记忆 (Observations) 和 状态快照 (Snapshots)。
+    Memory (Hippocampus)
+    Responsible for storing Short-Term Memory (Observations) and Context Snapshots.
     """
     def __init__(self, capacity: int = 50):
         self.capacity = capacity
@@ -15,6 +19,7 @@ class Memory:
         self.short_term_observations: List[str] = [] 
         self.active_objective: Optional[str] = None
         self._load_objective()
+        self._restore_context()
 
     def _load_objective(self):
         """Load active objective from disk if exists."""
@@ -44,32 +49,51 @@ class Memory:
                 pass
 
     def save_snapshot(self, snapshot: ContextSnapshot):
-        """保存当前上下文快照"""
+        """Save current context snapshot."""
         self.snapshots.append(snapshot)
-        # 保持 Snapshot 历史记录不要无限增长，保留最近 40 个
-        if len(self.snapshots) > 40:
+        if len(self.snapshots) > Config.SNAPSHOT_HISTORY:
             self.snapshots.pop(0)
 
     def add_observation(self, observation: str):
         """
-        察记录。
-        执行 FIFO 裁剪，但保留足够多的上下文供 Brain 思考。
+        Record an observation.
         """
-        # 添加时间戳前缀，增加时序感
         timestamp = time.strftime("%H:%M:%S", time.localtime())
         entry = f"[{timestamp}] {observation}"
         
         self.short_term_observations.append(entry)
         
-        # 自动裁剪 (Pruning)
+        # Pruning
         if len(self.short_term_observations) > self.capacity:
-            # TODO: 未来发“记忆压缩” (Summarization)，将旧记忆压缩为摘要
-            # 目前仅做简单的 FIFO 移除
-            self.short_term_observations.pop(0)
-    
-    def get_recent_observations(self) -> List[str]:
-        return self.short_term_observations
+            self.short_term_observations = self.short_term_observations[-self.capacity:]
 
-    def get_state_summary(self) -> str:
-        """获取当前状态的文本摘要"""
-        return f"Objective: {self.active_objective or 'None'}\nRecent Events: {len(self.short_term_observations)}"
+    def get_recent_observations(self, limit: int = 10) -> List[str]:
+        return self.short_term_observations[-limit:]
+
+    def dump_state(self):
+        """Persist short-term memory to disk before hot reload."""
+        dump_file = getattr(Config, 'MEMORY_DUMP_FILE', os.path.join(Config.WAH_HOME, "memory_dump.json"))
+        try:
+            data = {
+                "short_term_observations": self.short_term_observations
+            }
+            with open(dump_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f)
+            logger.info(f"Memory state dumped to {dump_file}")
+        except Exception as e:
+            logger.error(f"Failed to dump memory state: {e}")
+
+    def _restore_context(self):
+        """Restore short-term memory from dump if exists (after hot reload)."""
+        dump_file = getattr(Config, 'MEMORY_DUMP_FILE', os.path.join(Config.WAH_HOME, "memory_dump.json"))
+        if os.path.exists(dump_file):
+            try:
+                with open(dump_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.short_term_observations = data.get("short_term_observations", [])
+                os.remove(dump_file)
+                timestamp = time.strftime("%H:%M:%S", time.localtime())
+                self.short_term_observations.append(f"[{timestamp}] SYSTEM: Memory restored after Hot Reload.")
+                logger.info("Memory state restored.")
+            except Exception as e:
+                logger.error(f"Failed to restore memory: {e}")

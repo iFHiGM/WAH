@@ -13,7 +13,14 @@ def handle_reflex(intent: Intent) -> str:
     """
     observation = ""
     
-    if intent.target_module == "git":
+    if intent.target_module == "system":
+        if intent.action == "reload":
+            from system.config import Config
+            Config.RELOAD_SIGNAL = True
+            observation = "System Reload Initiated. The kernel will restart shortly."
+            logger.info("Reflex: RELOAD signal set.")
+
+    elif intent.target_module == "git":
         if intent.action == "commit_all":
             msg = intent.params.get("message", "Auto-commit")
             code, out, err = git.commit_all(msg)
