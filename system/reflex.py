@@ -129,4 +129,36 @@ def handle_reflex(intent: Intent) -> str:
                 except Exception as e:
                     observation = f"System Error: Failed to create module. {e}"
 
+    else:
+        # Dynamic Dispatch to how/
+        try:
+            import importlib
+            # Security check: only allow alphanumeric names
+            if not intent.target_module.isalnum():
+                return f"Error: Invalid module name '{intent.target_module}'"
+                
+            module_name = f"how.{intent.target_module}"
+            module = importlib.import_module(module_name)
+            
+            func = getattr(module, intent.action, None)
+            if func:
+                try:
+                    # Pass params as kwargs
+                    result = func(**intent.params)
+                    
+                    if isinstance(result, (list, dict)):
+                        import json
+                        result = json.dumps(result, indent=2, ensure_ascii=False)
+                    
+                    observation = f"Dynamic Tool {intent.target_module}.{intent.action}: {result}"
+                    logger.info(f"Reflex: Executed dynamic tool {module_name}.{intent.action}")
+                except Exception as e:
+                     observation = f"Tool Execution Error: {e}"
+            else:
+                observation = f"Error: Action '{intent.action}' not found in module '{intent.target_module}'"
+        except ImportError:
+            observation = f"Error: Module '{intent.target_module}' not found."
+        except Exception as e:
+            observation = f"Dynamic Dispatch Error: {e}"
+
     return observation

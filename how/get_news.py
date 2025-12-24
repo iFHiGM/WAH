@@ -2,6 +2,7 @@ import urllib.request
 import re
 
 def get_npr():
+    """Fetches top headlines from NPR text site."""
     try:
         url = "https://text.npr.org/"
         # Use a generic user agent to avoid blocking
@@ -15,6 +16,7 @@ def get_npr():
         return [f"NPR Error: {e}"]
 
 def get_cnn():
+    """Fetches top headlines from CNN Lite."""
     try:
         url = "https://lite.cnn.com/"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})

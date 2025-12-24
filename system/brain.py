@@ -110,22 +110,38 @@ class Brain:
         return {}
 
     def _get_dynamic_tools(self) -> str:
-        """动态发现 how/ 目录下的扩展能力"""
-        tools = []
+        """Dynamically discover tools in how/ using AST to read docstrings."""
+        tools_desc = []
         try:
+            import ast
             ignore = {"__init__", "fs", "git", "shell", "models"}
             for f in os.listdir("how"):
                 if f.endswith(".py"):
                     name = f[:-3]
-                    if name not in ignore:
-                        tools.append(name)
-        except:
-            pass
+                    if name in ignore: continue
+                    
+                    path = os.path.join("how", f)
+                    try:
+                        with open(path, "r", encoding="utf-8") as file:
+                            tree = ast.parse(file.read())
+                            
+                        for node in tree.body:
+                            if isinstance(node, ast.FunctionDef):
+                                if not node.name.startswith("_"):
+                                    doc = ast.get_docstring(node) or "No description"
+                                    # Format: - module.function(args): doc
+                                    args = [a.arg for a in node.args.args if a.arg != 'self']
+                                    sig = f"{name}.{node.name}({', '.join(args)})"
+                                    tools_desc.append(f"- {sig}: {doc.strip().splitlines()[0]}") # First line of doc
+                    except Exception as e:
+                        logger.warning(f"Brain: Failed to inspect {name}: {e}")
+        except Exception as e:
+             logger.warning(f"Brain: Discovery failed: {e}")
         
-        if not tools:
+        if not tools_desc:
             return ""
         
-        return "\n        - [Dynamic] " + ", ".join([f"{t}: <unknown_methods>" for t in tools])
+        return "\n        [Dynamic Skills]\n        " + "\n        ".join(tools_desc)
 
     def think(self, snapshot: ContextSnapshot, user_command: Optional[str] = None, memory_objective: Optional[str] = None) -> List[Intent]:
         # ... (Router logic unchanged) ...
