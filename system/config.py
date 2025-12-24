@@ -42,7 +42,7 @@ class Config:
     DEBUG = os.getenv("WAH_DEBUG", "false").lower() == "true"
     
     # 系统常量
-    PROTECTED_FILES = {"GENESIS.org", "README.org"}
+    PROTECTED_FILES = {"GENESIS.org", "README.org", "wah.py"}
     MEMORY_CAPACITY = 50
     SNAPSHOT_HISTORY = 20
 

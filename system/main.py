@@ -107,3 +107,6 @@ def life_loop():
     except KeyboardInterrupt:
         print("\nWAH Kernel Stopping...")
         logger.info("WAH Kernel Stopped by User")
+
+if __name__ == "__main__":
+    life_loop()
