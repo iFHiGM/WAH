@@ -32,6 +32,7 @@ class Config:
     OBJECTIVE_FILE = os.path.join(WAH_HOME, "active_objective")
     LESSONS_FILE = os.path.join(WAH_HOME, "lessons_learned.org")
     MEMORY_DUMP_FILE = os.path.join(WAH_HOME, "memory_dump.json")
+    TRAUMA_LOG = os.path.join(WAH_HOME, "trauma.log")
     
     # Runtime Flags
     RELOAD_SIGNAL = False

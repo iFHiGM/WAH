@@ -2,8 +2,8 @@ import time
 import sys
 import os
 
-# Add root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add root to path (Insert at 0 to prioritize local override)
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from system.bus import EventBus
 from system.events import Event, EventType
@@ -18,6 +18,22 @@ from system.logger import get_logger
 logger = get_logger()
 
 def life_loop():
+    if "--test" in sys.argv:
+        print("🌱 SYSTEM: Running self-test...")
+        try:
+            # 1. Smoke Test: Try to instantiate core components
+            print(".. Checking Infrastructure")
+            bus = EventBus()
+            print(".. Checking Memory")
+            memory = Memory()
+            print(".. Checking Brain")
+            brain = Brain()
+            print("✅ SYSTEM: Self-test passed (Core components initialized).")
+            sys.exit(0)
+        except Exception as e:
+            print(f"❌ SYSTEM: Self-test failed: {e}", file=sys.stderr)
+            sys.exit(1)
+
     print("WAH Kernel Starting... (Tail 'wah.log' for debug info)")
     logger.info("WAH Kernel Session Started")
     
@@ -25,6 +41,17 @@ def life_loop():
     bus = EventBus()
     memory = Memory()
     brain = Brain() 
+
+    # --- TRAUMA REFLECTION ---
+    if os.path.exists(Config.TRAUMA_LOG):
+        try:
+            with open(Config.TRAUMA_LOG, "r", encoding='utf-8') as f:
+                last_trauma = f.readlines()[-1] # Get latest
+            memory.add_observation(f"SYSTEM_TRAUMA: Last evolution attempt failed. Details: {last_trauma}")
+            # Do NOT remove log yet; let Brain decide when it's learned
+            logger.warning("Trauma detected and injected into memory.")
+        except:
+            pass
     
     # 2. Sensors (Producers)
     sensors = [
@@ -41,18 +68,20 @@ def life_loop():
     # 3. Main Loop (Consumer)
     try:
         while True:
-            # --- HOT RELOAD CHECK ---
+            # --- HOT RELOAD CHECK (Evolution Request) ---
             if Config.RELOAD_SIGNAL:
-                logger.info("KERNEL: Reload Signal Detected. Initiating Hot Reload.")
-                print("SYSTEM: Hot Reloading...")
+                logger.info("KERNEL: Reload Signal Detected. Initiating Evolution.")
+                print("SYSTEM: Evolution sequence initiated...")
                 try:
                     memory.dump_state()
                     sys.stdout.flush()
                     sys.stderr.flush()
-                    # Re-execute the current script with the same arguments
-                    os.execv(sys.executable, [sys.executable] + sys.argv)
+                    # Exit with code 100 to signal wah.py to swap directories
+                    sys.exit(100)
+                except SystemExit:
+                    raise
                 except Exception as e:
-                    logger.error(f"Reload Failed: {e}")
+                    logger.error(f"Evolution Exit Failed: {e}")
                     Config.RELOAD_SIGNAL = False
 
             # Wait for event

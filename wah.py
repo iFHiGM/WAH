@@ -49,8 +49,6 @@ def run_kernel(target_dir, args=[]):
 
     cmd = [sys.executable, entry_point] + args
     
-    # We pipe stderr to a file so we can read it if it crashes,
-    # but we don't pipe stdout so the user can interact with the shell normally.
     err_file = os.path.join(WAH_HOME, f"stderr_{os.getpid()}.tmp")
     
     print(f"🌱 BODY: Pulse -> {target_dir} {' '.join(args)}")
@@ -58,26 +56,24 @@ def run_kernel(target_dir, args=[]):
     start_time = time.time()
     try:
         with open(err_file, "w") as f_err:
-            # Popen allows us to wait and get the exit code
             proc = subprocess.Popen(
                 cmd,
-                stderr=f_err,       # Capture stderr to file
-                stdout=None,        # Inherit stdout (Interactive Shell works)
-                stdin=None,         # Inherit stdin (Keyboard works)
-                cwd=os.getcwd(),    # Run from project root
+                stderr=f_err,       # Capture stderr
+                stdout=None,        # Inherit stdout
+                stdin=None,         # Inherit stdin
+                cwd=os.getcwd(),
                 env=os.environ.copy()
             )
             proc.wait()
             
         exit_code = proc.returncode
         
-        # Read stderr only if needed
         stderr_content = ""
         if exit_code != 0:
             if os.path.exists(err_file):
                 with open(err_file, "r", encoding='utf-8', errors='replace') as f:
                     stderr_content = f.read()
-            # If it crashed, print stderr to console too so user sees it
+            # Suppress crash log printing if it's an intentional evolution exit
             if exit_code != EXIT_EVOLUTION:
                 print(f"\n🔥 CRASH LOG:\n{stderr_content}")
                 
@@ -92,48 +88,13 @@ def run_kernel(target_dir, args=[]):
         if os.path.exists(err_file):
             try:
                 os.remove(err_file)
-            except:
-                pass
+            except: pass
 
-    duration = time.time() - start_time
     return exit_code, stderr_content
-
-def atomic_promote():
-    """
-    The Evolution Step.
-    Swaps system_incubator -> system.
-    """
-    print("🧬 BODY: Evolution Approved. Initiating DNA Swap...")
-    
-    try:
-        # 1. Backup Stable (if exists)
-        if os.path.exists(SYSTEM_DIR):
-            if os.path.exists(BACKUP_DIR):
-                shutil.rmtree(BACKUP_DIR)
-            # Use copytree for backup (safer than move)
-            shutil.copytree(SYSTEM_DIR, BACKUP_DIR)
-        
-        # 2. Remove Stable
-        shutil.rmtree(SYSTEM_DIR)
-        
-        # 3. Promote Incubator
-        # We rename the directory. This is usually atomic on POSIX.
-        os.rename(INCUBATOR_DIR, SYSTEM_DIR)
-        
-        print("🦋 BODY: Metamorphosis Complete.")
-        return True
-    except Exception as e:
-        print(f"💥 BODY: Critical Failure during promotion: {e}")
-        # Try to restore from backup
-        if os.path.exists(BACKUP_DIR) and not os.path.exists(SYSTEM_DIR):
-            print("🚑 BODY: Restoring from backup...")
-            shutil.copytree(BACKUP_DIR, SYSTEM_DIR)
-        return False
 
 def main():
     ensure_dirs()
-    
-    print("=== THE PHOENIX PROTOCOL (v2.0) ===")
+    print("=== THE PHOENIX PROTOCOL (v2.1: Swap-Test) ===")
     
     while True:
         # --- PHASE 1: RUN STABLE SOUL ---
@@ -145,30 +106,49 @@ def main():
             break
             
         elif exit_code == EXIT_EVOLUTION:
-            print(f"🥚 BODY: Evolution Request Received (Exit {EXIT_EVOLUTION}).")
+            print(f"🥚 BODY: Evolution Request Received.")
             
             if not os.path.exists(INCUBATOR_DIR):
-                print("⚠️ BODY: Evolution requested but no incubator found! Restarting Stable.")
+                print("⚠️ BODY: No incubator found! Restarting Stable.")
                 continue
-                
-            # --- PHASE 3: THE TRIAL ---
-            print("⚔️ BODY: Starting The Trial (Test Mode)...")
-            # We assume Level 1 accepts '--test' to run self-checks and exit(0) on success
-            test_code, test_err = run_kernel(INCUBATOR_DIR, ["--test"])
+            
+            # --- PHASE 3: THE SWAP-TEST ---
+            print("🧪 BODY: Swapping system for Trial...")
+            
+            # Clean previous backup
+            if os.path.exists(BACKUP_DIR):
+                shutil.rmtree(BACKUP_DIR)
+
+            try:
+                # 1. Stable -> Backup
+                os.rename(SYSTEM_DIR, BACKUP_DIR)
+                # 2. Incubator -> Stable (The Candidate becomes The System)
+                os.rename(INCUBATOR_DIR, SYSTEM_DIR)
+            except OSError as e:
+                print(f"💥 BODY: Swap failed: {e}. Attempting rollback...")
+                if os.path.exists(BACKUP_DIR) and not os.path.exists(SYSTEM_DIR):
+                    os.rename(BACKUP_DIR, SYSTEM_DIR)
+                continue
+
+            print("⚔️ BODY: Starting The Trial (in-place)...")
+            test_code, test_err = run_kernel(SYSTEM_DIR, ["--test"])
             
             if test_code == 0:
-                # --- PHASE 4: PROMOTION ---
-                if atomic_promote():
-                    print("✨ BODY: Restarting with new Soul...")
-                    continue
-                else:
-                    print("💀 BODY: Promotion failed. Reverting to old Soul.")
+                # --- PHASE 4: COMMIT ---
+                print("✨ BODY: Trial Passed. Evolution Confirmed.")
+                # We stay as 'system'. The old system is in 'system_last_good'.
             else:
-                # --- PHASE 5: REJECTION ---
-                print(f"🔥 BODY: The Trial Failed (Exit {test_code}).")
-                log_trauma("incubator_trial", test_code, test_err)
-                print("♻️ BODY: Reverting to Stable Soul.")
-                # We do NOT promote. We restart the loop, which runs SYSTEM_DIR (Stable).
+                # --- PHASE 5: REVERT ---
+                print(f"🔥 BODY: Trial Failed (Exit {test_code}). Reverting...")
+                log_trauma("evolution_trial", test_code, test_err)
+                
+                # Move the bad candidate back to incubator (so Soul can inspect it)
+                if os.path.exists(INCUBATOR_DIR):
+                    shutil.rmtree(INCUBATOR_DIR)
+                os.rename(SYSTEM_DIR, INCUBATOR_DIR)
+                
+                # Restore Backup -> System
+                os.rename(BACKUP_DIR, SYSTEM_DIR)
                 
         else:
             # --- PHASE 6: RESURRECTION ---
