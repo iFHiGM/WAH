@@ -93,7 +93,11 @@ def life_loop():
 
             # 3. Brain Processing
             if event.type in [EventType.USER_COMMAND, EventType.FILE_CHANGE, EventType.IDLE, EventType.SYSTEM_CONTROL]:
-                intents = brain.think(memory)
+                user_command = None
+                if event.type == EventType.USER_COMMAND:
+                    user_command = event.payload
+
+                intents = brain.think(snapshot, user_command, memory.active_objective)
                 for intent in intents:
                     # Execute Reflex
                     obs = handle_reflex(intent)
