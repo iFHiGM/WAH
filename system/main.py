@@ -135,6 +135,11 @@ def life_loop():
                         
     except KeyboardInterrupt:
         print("\nWAH Kernel Stopping...")
+        try:
+            memory.dump_state()
+            print("SYSTEM: Memory state saved.")
+        except Exception as e:
+            logger.error(f"Failed to save state on shutdown: {e}")
         logger.info("WAH Kernel Stopped by User")
 
 if __name__ == "__main__":
