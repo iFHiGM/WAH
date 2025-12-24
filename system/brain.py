@@ -225,6 +225,12 @@ class Brain:
         - If 'active_goal' is completed, last intent MUST be 'system.clear_objective'.
         - If checking environment (ls, cat), do NOT output chat.reply yet. Wait for Observation.
         - **VERIFICATION RULE**: After writing/replacing a file, you MUST immediately read it back to verify the change in the next step.
+        - **SELF-EVOLUTION RULE**: When modifying core code in 'system/', DO NOT use 'fs.write'. Instead:
+          1. evolution.prepare_incubator()
+          2. evolution.stage_change(file, new_content)
+          3. evolution.trigger_evolution()
+          (This ensures the Watchdog tests your code before applying it.)
+        
         - Output JSON list of intents. Format: 
           {{ "intents": [ {{ "target_module": "...", "action": "...", "params": {{...}}, "reasoning": "..." }} ] }}
         """
