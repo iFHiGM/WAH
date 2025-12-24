@@ -6,6 +6,17 @@
 
 ## 2. Architecture & Capabilities
 
+### The Phoenix Protocol (Self-Evolution Architecture)
+*   **The Body (`wah.py`)**: Immutable Watchdog (PID 1).
+    *   **Role**: Process Manager & Isolation.
+    *   **Responsibility**: Launches `system/main.py`. If it crashes, restarts it. If it signals evolution (Exit 100), tests `system_incubator/` and atomically promotes it if successful.
+*   **The Soul (`system/`)**: Intelligent Kernel.
+    *   **Role**: Business Logic & Evolution Driver.
+    *   **Responsibility**: Modifies code in `system_incubator/`, signals evolution, and reflects on `trauma.log` (crash reports) to learn from failed mutations.
+*   **The Womb (`system_incubator/`)**: Staging Area.
+    *   **Role**: Test Flight.
+    *   **Mechanism**: New code must survive a "Trial of Life" (test mode) here before replacing The Soul.
+
 ### The Brain (Stateless Cognition)
 *   **Models**: 
     *   **Heavy**: `gemini-3-pro-preview` / `gemini-2.5-pro` (Verified).
